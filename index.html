@@ -883,7 +883,7 @@ function outfitPanel(){
   <div class="totals"><div><span>Tổng giá thuê (${BASE_DAYS} ngày)</span><b>${money(total)}</b></div><div><span>Đặt cọc</span><b>${money(deposit)}</b></div></div>
   <div style="display:grid;gap:8px;margin-top:12px"><button class="btn" data-act="try-all" ${items.length?'':'disabled'}>${ic('sparkles',16)} Thử toàn bộ outfit</button>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn ghost sm" data-act="save-outfit" ${items.length?'':'disabled'}>Lưu outfit</button><button class="btn ghost sm" data-act="rent-outfit" ${items.length?'':'disabled'}>Thuê outfit</button></div></div>
-  <p class="note">${FIT.enabled?(gemLive()?'Khi bấm “Thử toàn bộ outfit”, ảnh của bạn và ảnh các món trong outfit sẽ được gửi tới Google Gemini để tạo ảnh. Kết quả do AI tạo, chỉ mang tính tham khảo.':'Chưa có API key Gemini nên bản phối chỉ mang tính tham khảo.'):'Bản phối tham khảo: ảnh các món trong outfit được ghép lên ảnh của bạn ngay trên trình duyệt, ảnh của bạn không được gửi đi đâu. Màu sắc và kiểu dáng chỉ mang tính minh hoạ.'}</p></div>`;
+  <p class="note">${gemLive()?'Khi bấm “Thử toàn bộ outfit”, ảnh của bạn và ảnh các món trong outfit sẽ được gửi tới Google Gemini để tạo ảnh. Kết quả do AI tạo, chỉ mang tính tham khảo và có thể chưa giống 100% sản phẩm thật.':'Chưa có API key Gemini nên đang hiển thị bản phối tham khảo (ảnh ghép đơn giản), không phải ảnh AI.'}</p></div>`;
 }
 function stageAfter(){
   if(!S.photo) return 'Tải ảnh ở bên trái để bắt đầu.';
@@ -1287,7 +1287,7 @@ function handleAct(el){
     // AI Fit
     case 'rm-outfit':S.outfit=S.outfit.filter(x=>x!==id);S.tried=false;save('outfit',S.outfit);rerender();break;
     case 'del-photo':S.photo=null;S.tried=false;rerender();break;
-    case 'try-all':{if(!S.photo){toast('Hãy tải ảnh của bạn trước nhé');break}if(FS.busy){toast('AI đang xử lý, vui lòng chờ');break}S.tried=true;FS.err='';FS.img=null;if(!FIT.enabled){$('#after').innerHTML=stageAfter();toast('Đã phối đồ lên ảnh của bạn');break}if(!gemLive()){$('#after').innerHTML=stageAfter();toast('Chưa có API key Gemini — đang hiện bản phối tham khảo');break}fitRun();break}
+    case 'try-all':{if(!S.photo){toast('Hãy tải ảnh của bạn trước nhé');break}if(FS.busy){toast('AI đang xử lý, vui lòng chờ');break}S.tried=true;FS.err='';FS.img=null;if(!gemLive()){$('#after').innerHTML=stageAfter();toast('Chưa có API key Gemini — đang hiện bản phối tham khảo');break}fitRun();break}
     case 'save-outfit':S.saved.unshift({name:'Outfit '+(S.saved.length+1),items:[...S.outfit],date:nowStr()});save('saved',S.saved);toast('Đã lưu outfit'+(S.user?'':' (đăng nhập để quản lý trong Tài khoản)'));break;
     case 'rent-outfit':{let n=0;S.outfit.forEach(x=>{if(addCart(x)) n++});toast(`Đã thêm ${n} món vào giỏ thuê`);rerender();break}
     case 'ask':ask(val);break;
@@ -1331,67 +1331,42 @@ function handleAct(el){
    GEMINI — chat nổi ở góc trái dưới
    ========================================================= */
 const GEMINI={
-  key:'AQ.Ab8RN6IQXQQV_ND4eSwlSISM9K6diW6bO6hIY2d0DKFOcokCeg',   // key dùng chung cho mọi người truy cập (không cần nhập)
-  keyAlts:['AQ.Ab8RN6K9I-Wvs4EYeCuuiX8mW9K6-m3UqR_Ze-urxGbZEyG61g','AQ.Ab8RN6K9l-Wvs4EYeCuuiX8mW9K6-m3UqR_Ze-urxGbZEyG61g'],   // key dự phòng (chép từ ảnh chụp nên thử cả I hoa / l thường)
+  key:'AQ.Ab8RN6IQXQQV_ND4eSwlSISM9K6diW6bO6hIY2d0DKFOcokCeg',   // key mặc định cho mọi người dùng (nên khóa theo tên miền trong Google Cloud)
+  proxyUrl:'',                                  // (tuỳ chọn) máy chủ trung gian giữ key bí mật khi đăng web công khai
   model:'gemini-3.5-flash-lite',
-  models:['gemini-3.5-flash-lite','gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash','gemini-3.6-flash','gemini-3.8-flash'],   // chat: nếu model đầu 404 thì tự chuyển sang model kế tiếp (1.5 đã bị Google gỡ ở nhiều key → thêm 2.5-flash làm dự phòng cuối)
+  models:['gemini-3.5-flash-lite','gemini-3.8-flash','gemini-3.6-flash'],
   keyUrl:'https://aistudio.google.com/apikey'
 };
-const GS={open:false,settings:false,busy:false,key:load('gkey',''),model:load('gmodel7',GEMINI.model),msgs:[],hist:[],img:null};
+const GS={open:false,settings:false,busy:false,key:load('gkey',''),model:load('gmodel',GEMINI.model),msgs:[],hist:[],img:null};
 const mdLite=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
-(function(){const kv=load('gkeyv','');if(kv&&(kv===GEMINI.key||(GEMINI.keyAlts||[]).includes(kv)))GEMINI.key=kv})();
-let KEYOVR='';
-const gemKey=()=>KEYOVR||GS.key||GEMINI.key;
+const gemKey=()=>GS.key||GEMINI.key;
 const GHOSTS={studio:'https://generativelanguage.googleapis.com/v1beta/models/',vertex:'https://aiplatform.googleapis.com/v1/publishers/google/models/'};
 let GHOST=load('ghost','');
-const BADK=new Set();
 async function gemPost(model,body,ms){
-  const ks=[...new Set([GS.key,GEMINI.key,...(GEMINI.keyAlts||[])].filter(k=>k&&!BADK.has(k)))];
-  let r=null;
-  for(const k of (ks.length?ks:[gemKey()])){
-    KEYOVR=k;r=await gemPost1(model,body,ms);
-    const st=r.res.status,m=(r.data&&r.data.error&&r.data.error.message)||'',kb=st===401||(st===400&&/api[ _]?key/i.test(m));
-    if(r.res.ok){if(k!==GEMINI.key&&k!==GS.key){GEMINI.key=k;save('gkeyv',k)}break}
-    if(kb)BADK.add(k);            // key sai → không thử lại ở các lần sau
-    if(!(kb||st===403))break;     // lỗi khác (404 model…) thì không đổi key
+  const hdr={'Content-Type':'application/json'};
+  if(GEMINI.proxyUrl){
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),ms);
+    try{const res=await fetch(GEMINI.proxyUrl,{method:'POST',headers:hdr,body:JSON.stringify({...body,model}),signal:ctl.signal});let data=null;try{data=await res.json()}catch(e){}return {res,data}}finally{clearTimeout(to)}
   }
-  KEYOVR='';return r;
-}
-async function gemPost1(model,body,ms){
-  const k=gemKey(),hdr={'Content-Type':'application/json','x-goog-api-key':k};
-  const one=async h=>{
-    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),h==='vertex'?Math.min(ms,8000):ms),t0=performance.now();
-    try{
-      const res=await fetch(GHOSTS[h]+encodeURIComponent(model)+':generateContent',{method:'POST',headers:hdr,body:JSON.stringify(body),signal:ctl.signal});
-      let data=null;try{data=await res.json()}catch(e){}
-      try{console.log('[gemini]',h,model,res.status,Math.round(performance.now()-t0)+'ms')}catch(_){}
-      return {res,data,host:h};
-    }finally{clearTimeout(to)}
-  };
-  const o=await one('studio');
-  // Vertex (chậm, ~10s) chỉ thử khi key AQ. bị Google AI Studio từ chối quyền; lỗi 404/model thì KHÔNG thử
-  if(!o.res.ok&&/^AQ\./.test(k)&&(o.res.status===401||o.res.status===403)){
-    try{const v=await one('vertex');if(v.res.ok)return v}catch(e){}
+  hdr['x-goog-api-key']=gemKey();
+  let hosts=/^AQ\./.test(gemKey())?['studio','vertex']:['studio'];
+  if(GHOST&&hosts.includes(GHOST)) hosts=[GHOST,...hosts.filter(h=>h!==GHOST)];
+  let out=null,netErr=null;
+  for(const h of hosts){
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),ms);
+    let res;
+    try{res=await fetch(GHOSTS[h]+encodeURIComponent(model)+':generateContent',{method:'POST',headers:hdr,body:JSON.stringify(body),signal:ctl.signal})}
+    catch(e){clearTimeout(to);if(e&&e.name==='AbortError')throw e;netErr=e;continue}
+    clearTimeout(to);
+    let data=null;try{data=await res.json()}catch(e){}
+    out={res,data,host:h};
+    if(res.ok){if(GHOST!==h){GHOST=h;save('ghost',h)}return out}
+    if(![401,403,404].includes(res.status)) return out;
   }
-  return o;
+  if(out) return out;
+  throw netErr||new Error('network');
 }
-// hỏi Google key này dùng được những model nào → chọn đúng model, không đoán mò (tránh 404 lặp lại)
-let MODELS_OK=null;
-async function gemModels(){
-  if(MODELS_OK)return MODELS_OK;
-  const ks=[...new Set([GS.key,GEMINI.key].filter(k=>k&&!BADK.has(k)))];
-  for(const k of ks){
-    try{
-      const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),6000);
-      const res=await fetch(GHOSTS.studio.replace(/models\/$/,'models?pageSize=200'),{headers:{'x-goog-api-key':k},signal:ctl.signal});clearTimeout(to);
-      if(!res.ok)continue;const d=await res.json();
-      const l=(d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
-      if(l.length){MODELS_OK=l;try{console.log('[gemini] models',l.join(', '))}catch(_){}return l}
-    }catch(e){}
-  }
-  return null;
-}
-const gemLive=()=>!!gemKey();
+const gemLive=()=>!!(gemKey()||GEMINI.proxyUrl);
 const gemGreeting=()=>[{role:'bot',text:'Xin chào! Mình là **AI Stylist** của NextGen Rental ✨\nHỏi mình về trang phục theo dịp, ngân sách, phong cách — hoặc gửi ảnh để mình tư vấn. Mình cũng gợi ý cách tái chế đồ cũ nữa!',sugs:[],guides:[]}];
 GS.msgs=gemGreeting();
 
@@ -1426,8 +1401,8 @@ function gemParse(txt){
 }
 
 /* ---------- AI Fit: tạo ảnh thử đồ bằng Gemini ---------- */
-const FS={busy:false,img:null,err:'',model:load('fitmodel','')};
-const FIT={models:['gemini-nano-banana-2.1','gemini-3.1-flash-image','gemini-2.5-flash-image','gemini-3-pro-image'],limit:5,enabled:false};   // limit = số lượt tạo ảnh AI / thiết bị / ngày (tạo ảnh là dịch vụ trả phí của Google)
+const FS={busy:false,img:null,err:'',model:''};
+const FIT={models:['gemini-2.5-flash-image','gemini-3.1-flash-image','gemini-nano-banana-2.1']};
 function shrinkB64(url,max,q){return new Promise((ok,no)=>{const im=new Image();im.onload=()=>{try{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',q||.88).split(',')[1])}catch(e){no(e)}};im.onerror=()=>no(new Error('img'));im.src=url})}
 function findImg(o,d){d=d||0;if(!o||typeof o!=='object'||d>8)return null;
   const b=o.inlineData||o.inline_data;if(b&&b.data&&/^image\//.test(b.mimeType||b.mime_type||''))return{mime:b.mimeType||b.mime_type,data:b.data};
@@ -1435,9 +1410,9 @@ function findImg(o,d){d=d||0;if(!o||typeof o!=='object'||d>8)return null;
   for(const k in o){const r=findImg(o[k],d+1);if(r)return r}return null}
 async function fitParts(){
   const {items}=outfitTotals();
-  const person=await shrinkB64(S.photo,768,.85);
+  const person=await shrinkB64(S.photo,1024,.9);
   const refs=[],noimg=[];
-  for(const p of items.slice(0,5)){const u=src(p.img);let b=null;if(u.startsWith('data:')){try{b=await shrinkB64(u,512,.8)}catch(e){}}
+  for(const p of items.slice(0,5)){const u=src(p.img);let b=null;if(u.startsWith('data:')){try{b=await shrinkB64(u,768,.85)}catch(e){}}
     if(b)refs.push({p,b});else noimg.push(p)}
   const list=refs.map((r,i)=>`Image ${i+2}: ${r.p.name} (${r.p.slot}${r.p.color?', '+r.p.color.toLowerCase():''})`).join('\n')+(noimg.length?'\nAlso include (no reference photo): '+noimg.map(p=>p.name+' ('+p.slot+')').join(', '):'');
   const prompt=`Create a high-quality, photorealistic virtual try-on portrait.
@@ -1454,7 +1429,7 @@ async function fitGenerate(){
   const toIn=ps=>ps.map(x=>x.text!==undefined?{type:'text',text:x.text}:{type:'image',mime_type:x.inlineData.mimeType,data:x.inlineData.data});
   const order=[FS.model,...FIT.models].filter((v,i,a)=>v&&a.indexOf(v)===i);
   const tries=[],log=[];
-  if(/^(AIza|AQ\.)/.test(gemKey()||'')) tries.push({m:'gemini-nano-banana-2.1',mode:'int'});
+  if(!GEMINI.proxyUrl) tries.push({m:'gemini-nano-banana-2.1',mode:'int'});
   order.forEach(m=>tries.push({m,mode:'gc'}));
   let last=null;
   for(const t of tries){
@@ -1462,31 +1437,24 @@ async function fitGenerate(){
     try{
       if(t.mode==='int'){
         const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),90000);
-        try{
-          const ks=[...new Set([GS.key,GEMINI.key,...(GEMINI.keyAlts||[])].filter(Boolean))];
-          for(const k of ks){
-            res=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':k},body:JSON.stringify({model:t.m,input:toIn(parts),response_format:{type:'image',mime_type:'image/jpeg',image_size:'1K'}}),signal:ctl.signal});data=null;try{data=await res.json()}catch(e){}
-            if(res.ok&&k!==GEMINI.key&&k!==GS.key){GEMINI.key=k;save('gkeyv',k)}
-            if(!(res.status===401||res.status===403||(res.status===400&&/api[ _]?key/i.test((data&&data.error&&data.error.message)||''))))break;
-          }
-        }finally{clearTimeout(to)}
+        try{res=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':gemKey()},body:JSON.stringify({model:t.m,input:toIn(parts),response_format:{type:'image'}}),signal:ctl.signal});try{data=await res.json()}catch(e){}}finally{clearTimeout(to)}
       } else { ({res,data}=await gemPost(t.m,{contents:[{role:'user',parts}],generationConfig:{responseModalities:['TEXT','IMAGE']}},90000)); }
     }catch(e){
       if(t.mode==='int'&&!(e&&e.name==='AbortError')){log.push('interactions → mạng/CORS');continue}
       throw new Error(e&&e.name==='AbortError'?'AI phản hồi quá lâu. Bạn thử lại nhé.':'Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.')}
     if(!res.ok){
       const m=(data&&data.error&&data.error.message)||'',st=res.status;
-      if(t.mode==='int'&&st!==429&&st!==403&&st!==401){log.push('interactions → '+st+(m?' ('+m.slice(0,100)+')':''));continue}
+      if(t.mode==='int'&&st!==429){log.push('interactions → '+st+(m?' ('+m.slice(0,100)+')':''));continue}
       if(st===400&&/api[ _]?key/i.test(m))throw new Error('API key không hợp lệ'+(m?': '+m.slice(0,160):'.'));
       if(st===401||st===403)throw new Error('Key bị từ chối hoặc chưa được cấp quyền tạo ảnh (mã '+st+')'+(m?': '+m.slice(0,160):'.'));
-      if(st===429)throw new Error('Key chưa được phép tạo ảnh hoặc đã hết hạn mức. Google chỉ cho tạo ảnh khi dự án của key đã bật thanh toán (gói miễn phí không có). Đợi một lát hoặc bật thanh toán rồi thử lại.');
+      if(st===429)throw new Error('Đã hết hạn mức tạo ảnh của key. Đợi một lát rồi thử lại.');
       log.push(t.m+' → '+st+(m?' ('+m.slice(0,140)+')':''));
       last=new Error(st===404||st===400?'Model tạo ảnh “'+t.m+'” không dùng được với key này'+(m?': '+m:'.'):'Gemini gặp lỗi (mã '+st+').');
       if(st===404||st===400)continue;
       throw last;
     }
     const im=findImg(data);
-    if(im){FS.model=t.m;save('fitmodel',t.m);return 'data:'+im.mime+';base64,'+im.data}
+    if(im){FS.model=t.m;return 'data:'+im.mime+';base64,'+im.data}
     const block=data&&data.promptFeedback&&data.promptFeedback.blockReason;
     last=new Error(block?'Ảnh bị bộ lọc an toàn của Gemini chặn. Hãy thử ảnh khác (ảnh rõ mặt, đủ sáng).':'Gemini không trả về ảnh. Thử lại hoặc dùng ảnh khác.');
     if(block)throw last;
@@ -1495,11 +1463,8 @@ async function fitGenerate(){
   throw last||new Error('Không tạo được ảnh.');
 }
 async function fitRun(){
-  const up=()=>{const a=$('#after');if(a)a.innerHTML=stageAfter()};
-  const day=new Date().toISOString().slice(0,10);let cnt=load('fitcnt',null);if(!cnt||cnt.d!==day)cnt={d:day,n:0};
-  if(cnt.n>=FIT.limit){FS.err='Hôm nay bạn đã dùng hết '+FIT.limit+' lượt tạo ảnh AI. Mai quay lại nhé — ảnh phối tham khảo bên dưới vẫn xem được.';FS.img=null;toast(FS.err);up();return}
-  FS.busy=true;FS.err='';up();
-  try{FS.img=await fitGenerate();cnt.n++;save('fitcnt',cnt);toast('AI đã tạo ảnh thử đồ')}
+  FS.busy=true;FS.err='';const up=()=>{const a=$('#after');if(a)a.innerHTML=stageAfter()};up();
+  try{FS.img=await fitGenerate();toast('AI đã tạo ảnh thử đồ')}
   catch(e){FS.img=null;FS.err=e.message||'Lỗi';toast(FS.err)}
   finally{FS.busy=false;up()}
 }
@@ -1508,39 +1473,18 @@ async function geminiCall(text,img){
   const parts=[{text:text||'Hãy nhận xét ảnh này và gợi ý trang phục phù hợp từ kho NextGen Rental.'}];
   if(img) parts.push({inlineData:{mimeType:img.mime,data:img.b64}});
   contents.push({role:'user',parts});
-  const bodyFor=(m,nt)=>({systemInstruction:{parts:[{text:geminiSystem()}]},contents,generationConfig:{responseMimeType:'application/json',maxOutputTokens:1024,temperature:.7,...(nt?{}:/gemini-2\.5/.test(m)?{thinkingConfig:{thinkingBudget:0}}:/gemini-3/.test(m)?{thinkingConfig:{thinkingLevel:'minimal'}}:{})}});
-  let res,data,tmo=false;
-  let order=[GS.model,...GEMINI.models.filter(m=>m!==GS.model)];
-  if(!MODELS_OK){
-    const l=await gemModels();
-    if(l){
-      const txt=m=>/image|tts|live|embed|audio|robotics|computer|gemma|aqa|imagen|veo|customtools/i.test(m);
-      const pref=[...GEMINI.models.filter(m=>l.includes(m)),...l.filter(m=>/^gemini-[\d.]+-flash(-lite)?$/.test(m)),...l.filter(m=>/flash/.test(m)&&!txt(m))];
-      order=[...new Set(pref)];if(!order.length)order=[GS.model];
-      if(order[0]!==GS.model&&!l.includes(GS.model)){GS.model=order[0];save('gmodel7',GS.model)}
-    }
-  } else order=[GS.model,...GEMINI.models.filter(m=>m!==GS.model)].filter(m=>MODELS_OK.includes(m));
-  if(!order.length)order=[GS.model];
-  for(const m of order){
-    try{
-      ({res,data}=await gemPost(m,bodyFor(m),18000));
-      if(res.status===400&&/think/i.test((data&&data.error&&data.error.message)||'')) ({res,data}=await gemPost(m,bodyFor(m,true),18000));
-    }catch(e){
-      if(e&&e.name==='AbortError'){tmo=true;continue}   // model này chậm → thử model kế tiếp thay vì chờ
-      throw new Error('Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.');
-    }
-    tmo=false;
-    if(res.status!==404){ if(res.ok&&m!==GS.model){GS.model=m;save('gmodel7',m)} break }
-  }
-  if(tmo||!res) throw new Error('Gemini phản hồi quá lâu. Bạn thử lại nhé.');
+  const body={systemInstruction:{parts:[{text:geminiSystem()}]},contents,generationConfig:{responseMimeType:'application/json'}};
+  let res,data;
+  try{ ({res,data}=await gemPost(GS.model,body,45000)); }
+  catch(e){ throw new Error(e&&e.name==='AbortError'?'Gemini phản hồi quá lâu. Bạn thử lại nhé.':'Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.'); }
   if(!res.ok){
     const m=(data&&data.error&&data.error.message)||'', st=res.status;
     if(st===400&&/api[ _]?key/i.test(m)) throw new Error('API key không hợp lệ. Bấm biểu tượng bánh răng để nhập lại.');
     if(st===400) throw new Error('Gemini từ chối yêu cầu'+(m?': '+m:'')+(img?' (thử bỏ ảnh đính kèm).':'.'));
-    if(st===401||st===403) throw new Error('Key bị từ chối hoặc chưa được cấp quyền (mã '+st+')'+(m?': '+m.slice(0,140):'.')+' Hãy dán key đúng (copy bằng nút “Sao chép khóa” trong AI Studio) vào bánh răng ⚙ và kiểm tra key chưa bị xóa hoặc giới hạn.');
-    if(st===404) throw new Error('Không tìm thấy model “'+GS.model+'” (đã thử cả '+GEMINI.models.join(', ')+')'+(m?'. Phản hồi: '+m.slice(0,140):'.')+' Bấm bánh răng để chọn model khác.');
+    if(st===401||st===403) throw new Error('Key bị từ chối hoặc chưa được cấp quyền (mã '+st+'). Bấm bánh răng để kiểm tra key.');
+    if(st===404) throw new Error('Không tìm thấy model “'+GS.model+'”. Bấm bánh răng và chọn model khác.');
     if(st===429) throw new Error('Đã hết hạn mức tạm thời của key. Đợi một lát rồi thử lại.');
-    throw new Error('Gemini gặp lỗi (mã '+st+')'+(m?': '+m.slice(0,140):'')+'. Thử lại sau nhé.');
+    throw new Error('Gemini gặp lỗi (mã '+st+'). Thử lại sau nhé.');
   }
   const cand=data&&data.candidates&&data.candidates[0];
   const txt=cand&&cand.content&&cand.content.parts?cand.content.parts.map(x=>x.text||'').join(''):'';
@@ -1551,19 +1495,17 @@ async function geminiCall(text,img){
 }
 async function geminiAsk(raw){
   const text=String(raw||'').trim();
-  if(/^(AQ\.|AIza)[\w.\-]{20,}$/.test(text)){   // người dùng lỡ dán API key vào khung chat → lưu vào cài đặt, không gửi như tin nhắn
-    GS.key=text;save('gkey',text);GS.msgs.push({role:'bot',text:'Mình đã lưu key này để thử (ưu tiên hơn key dùng chung, chỉ trên trình duyệt này) — key **không** bị gửi như tin nhắn. Bạn hỏi lại câu vừa rồi nhé!',sugs:[],guides:[]});if(!GS.open)gemToggle();renderGem();return}
   if((!text&&!GS.img)||GS.busy) return;
   if(!GS.open) gemToggle();
   const img=GS.img; GS.img=null;
   GS.msgs.push({role:'me',text:text||'(gửi ảnh)',img:img?img.url:null});
   GS.busy=true; renderGem();
-  let bot;const t0=performance.now();
+  let bot;
   try{
     if(gemLive()) bot=await geminiCall(text,img);
     else { const r=stylistReply(text||'gợi ý outfit'); bot={role:'bot',text:r.text,sugs:r.sugs,guides:[],demo:true}; }
   }catch(err){ bot={role:'bot',text:err.message,sugs:[],guides:[],err:true}; }
-  GS.lastMs=Math.round((performance.now()-t0)/100)/10;GS.busy=false; GS.msgs.push(bot); renderGem();
+  GS.busy=false; GS.msgs.push(bot); renderGem();
 }
 function gemMsgHtml(m){
   if(m.role==='me') return `<div class="msg me">${m.img?`<img class="gimg" src="${m.img}" alt="Ảnh bạn gửi">`:''}${mdLite(m.text)}</div>`;
@@ -1576,7 +1518,7 @@ function renderGem(){
   const live=gemLive();
   box.innerHTML=GS.msgs.map(gemMsgHtml).join('')+(GS.busy?'<div class="msg bot gem-typing"><i></i><i></i><i></i></div>':'');
   box.scrollTop=box.scrollHeight;
-  $('#gemMode').textContent=live?('Gemini · '+GS.model+(GS.lastMs?' · '+GS.lastMs+'s':'')+' · v7'):'Chế độ demo · chưa có API key';
+  $('#gemMode').textContent=live?(GEMINI.proxyUrl?'Gemini · qua máy chủ':'Gemini · '+GS.model):'Chế độ demo · chưa có API key';
   const att=$('#gemAtt');
   if(GS.img){att.hidden=false;att.innerHTML=`<img src="${GS.img.url}" alt="Ảnh đính kèm"><span>${live?'Ảnh sẽ được gửi tới Google Gemini để phân tích khi bạn bấm Gửi.':'Chưa có API key: ảnh sẽ không được phân tích (chế độ demo).'}</span><button type="button" data-act="gem-rmimg" aria-label="Bỏ ảnh">×</button>`}
   else {att.hidden=true;att.innerHTML=''}
@@ -1588,10 +1530,10 @@ function gemShell(){
     <div class="gh"><button data-act="gem-settings" aria-label="Cài đặt Gemini" title="Cài đặt">${ic('gear',18)}</button><button data-act="gem-clear" aria-label="Xóa hội thoại" title="Xóa hội thoại">${ic('trash',18)}</button><button data-act="gem-toggle" aria-label="Đóng" title="Đóng">${ic('x',18)}</button></div></div>
    <div class="gem-set" id="gemSet" hidden>
      <div>Dán <b>API key Gemini</b> (miễn phí từ <a href="${GEMINI.keyUrl}" target="_blank" rel="noopener">Google AI Studio</a>) để dùng AI thật.</div>
-     <input type="password" id="gemKey" placeholder="AQ.… hoặc AIza…" autocomplete="off" spellcheck="false">
+     <input type="password" id="gemKey" placeholder="AIza…" autocomplete="off" spellcheck="false">
      <input type="text" id="gemModel" list="gemModels" placeholder="Model, ví dụ ${GEMINI.model}" autocomplete="off"><datalist id="gemModels">${GEMINI.models.map(m=>`<option value="${m}">`).join('')}</datalist>
      <div class="row"><button class="btn xs" data-act="gem-save">Lưu</button><button class="btn ghost xs danger" data-act="gem-delkey">Xóa key</button></div>
-     <div style="color:var(--muted)">Yêu cầu được gửi thẳng từ trình duyệt tới Google Gemini (không qua proxy). Key dùng chung đã có sẵn trong trang nên mọi thiết bị đều dùng được; key bạn dán ở đây chỉ lưu trên trình duyệt này.</div></div>
+     <div style="color:var(--muted)">Key chỉ lưu trên trình duyệt này và gửi thẳng tới Google. Đừng để key trong file khi đăng web công khai — hãy dùng máy chủ trung gian (GEMINI.proxyUrl).</div></div>
    <div class="gem-msgs" id="gemMsgs" aria-live="polite"></div>
    <div class="gem-chips">${['Đi cưới mặc gì, ngân sách 300k?','Outfit công sở thanh lịch','Đồ chụp kỷ yếu','Cách tái chế áo phông cũ'].map(q=>`<button class="chip" data-act="gem-ask" data-val="${esc(q)}">${q}</button>`).join('')}</div>
    <div class="gem-att" id="gemAtt" hidden></div>
@@ -1606,12 +1548,12 @@ function gemToggle(){ GS.open=!GS.open; $('#gem').classList.toggle('open',GS.ope
 function gemClose(){ if(!GS.open) return; GS.open=false; const g=$('#gem'); if(g) g.classList.remove('open'); }
 function gemSettings(){
   GS.settings=!GS.settings; $('#gemSet').hidden=!GS.settings;
-  if(GS.settings){ $('#gemKey').value=''; $('#gemKey').placeholder=GEMINI.key?(GS.key?'•••••••• (key riêng đã lưu — nhập để thay, hoặc Xóa key để dùng key chung)':'Đã có key dùng chung. Dán key khác để thay (chỉ trên trình duyệt này)'):GS.key?'•••••••• (đã lưu — nhập để thay)':('AQ.… hoặc AIza…'); $('#gemModel').value=GS.model; }
+  if(GS.settings){ $('#gemKey').value=''; $('#gemKey').placeholder=GS.key?'•••••••• (đã lưu — nhập để thay)':'AIza…'; $('#gemModel').value=GS.model; }
 }
 function gemSave(){
   const k=$('#gemKey').value.trim(), m=$('#gemModel').value.trim()||GEMINI.model;
   if(k){ GS.key=k; }
-  GS.model=m; save('gkey',GS.key); save('gmodel7',GS.model);
+  GS.model=m; save('gkey',GS.key); save('gmodel',GS.model);
   GS.settings=false; $('#gemSet').hidden=true; if(k) toast('Đã lưu API key'); else toast('Đã lưu model'); renderGem();
 }
 function gemAttach(f){
@@ -1619,7 +1561,7 @@ function gemAttach(f){
   readFile(f).then(url=>{
     const im=new Image();
     im.onload=()=>{
-      const k=Math.min(1,768/Math.max(im.width,im.height)), c=document.createElement('canvas');
+      const k=Math.min(1,1024/Math.max(im.width,im.height)), c=document.createElement('canvas');
       c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k));
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);
       const out=c.toDataURL('image/jpeg',.85);
