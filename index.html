@@ -1576,7 +1576,7 @@ function renderGem(){
   const live=gemLive();
   box.innerHTML=GS.msgs.map(gemMsgHtml).join('')+(GS.busy?'<div class="msg bot gem-typing"><i></i><i></i><i></i></div>':'');
   box.scrollTop=box.scrollHeight;
-  $('#gemMode').textContent=live?('Gemini · '+GS.model+(GS.lastMs?' · '+GS.lastMs+'s':'')):'Chế độ demo · chưa có API key';
+  $('#gemMode').textContent=live?('Gemini · '+GS.model+(GS.lastMs?' · '+GS.lastMs+'s':'')+' · v7'):'Chế độ demo · chưa có API key';
   const att=$('#gemAtt');
   if(GS.img){att.hidden=false;att.innerHTML=`<img src="${GS.img.url}" alt="Ảnh đính kèm"><span>${live?'Ảnh sẽ được gửi tới Google Gemini để phân tích khi bạn bấm Gửi.':'Chưa có API key: ảnh sẽ không được phân tích (chế độ demo).'}</span><button type="button" data-act="gem-rmimg" aria-label="Bỏ ảnh">×</button>`}
   else {att.hidden=true;att.innerHTML=''}
