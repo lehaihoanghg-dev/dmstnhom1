@@ -1377,7 +1377,7 @@ async function gemPost1(model,body,ms){
         last={res,data};
         if(res.ok){save('groute',rid(t));return last}
         if(t.direct)return last;                                   // Google trả lời trực tiếp → kết quả đáng tin nhất
-        if(res.status!==404&&![401,403].includes(res.status))return last;
+        if(res.status!==404&&![401,403].includes(res.status)&&res.status<500)return last;   // 5xx của proxy → thử cách khác (gọi thẳng Google)
         if(res.status!==404&&!best)best=last;
       }catch(e){if(e&&e.name==='AbortError')throw e;netErr=e}
       finally{clearTimeout(to)}
@@ -1541,7 +1541,7 @@ async function geminiCall(text,img){
     if(st===401||st===403) throw new Error('Key bị từ chối hoặc chưa được cấp quyền (mã '+st+')'+(m?': '+m.slice(0,140):'.')+' Hãy dán key vào bánh răng ⚙ (không dán vào khung chat) và kiểm tra key chưa bị xóa/giới hạn.');
     if(st===404) throw new Error('Không tìm thấy model “'+GS.model+'” (đã thử cả '+GEMINI.models.join(', ')+') hoặc proxy không có đường dẫn này'+(m?'. Phản hồi: '+m.slice(0,140):'.')+' Bấm bánh răng để chọn model khác.');
     if(st===429) throw new Error('Đã hết hạn mức tạm thời của key. Đợi một lát rồi thử lại.');
-    throw new Error('Gemini gặp lỗi (mã '+st+'). Thử lại sau nhé.');
+    throw new Error('Gemini gặp lỗi (mã '+st+')'+(m?': '+m.slice(0,140):'')+'. Thử lại sau nhé.');
   }
   const cand=data&&data.candidates&&data.candidates[0];
   const txt=cand&&cand.content&&cand.content.parts?cand.content.parts.map(x=>x.text||'').join(''):'';
