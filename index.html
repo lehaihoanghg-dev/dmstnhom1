@@ -1489,16 +1489,21 @@ async function geminiCall(text,img){
   const parts=[{text:text||'Hãy nhận xét ảnh này và gợi ý trang phục phù hợp từ kho NextGen Rental.'}];
   if(img) parts.push({inlineData:{mimeType:img.mime,data:img.b64}});
   contents.push({role:'user',parts});
-  const bodyFor=m=>({systemInstruction:{parts:[{text:geminiSystem()}]},contents,generationConfig:{responseMimeType:'application/json',maxOutputTokens:700,temperature:.7,...(/gemini-2\.5-flash/.test(m)?{thinkingConfig:{thinkingBudget:0}}:{})}});
-  let res,data;
-  try{
-    const order=[GS.model,...GEMINI.models.filter(m=>m!==GS.model)];
-    for(const m of order){
-      ({res,data}=await gemPost(m,bodyFor(m),45000));
-      if(res.status!==404) { if(res.ok&&m!==GS.model){GS.model=m;save('gmodel5',m)} break }
+  const bodyFor=(m,nt)=>({systemInstruction:{parts:[{text:geminiSystem()}]},contents,generationConfig:{responseMimeType:'application/json',maxOutputTokens:1024,temperature:.7,...(nt?{}:/gemini-2\.5/.test(m)?{thinkingConfig:{thinkingBudget:0}}:/gemini-3/.test(m)?{thinkingConfig:{thinkingLevel:'minimal'}}:{})}});
+  let res,data,tmo=false;
+  const order=[GS.model,...GEMINI.models.filter(m=>m!==GS.model)];
+  for(const m of order){
+    try{
+      ({res,data}=await gemPost(m,bodyFor(m),18000));
+      if(res.status===400&&/think/i.test((data&&data.error&&data.error.message)||'')) ({res,data}=await gemPost(m,bodyFor(m,true),18000));
+    }catch(e){
+      if(e&&e.name==='AbortError'){tmo=true;continue}   // model này chậm → thử model kế tiếp thay vì chờ
+      throw new Error('Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.');
     }
+    tmo=false;
+    if(res.status!==404){ if(res.ok&&m!==GS.model){GS.model=m;save('gmodel5',m)} break }
   }
-  catch(e){ throw new Error(e&&e.name==='AbortError'?'Gemini phản hồi quá lâu. Bạn thử lại nhé.':'Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.'); }
+  if(tmo||!res) throw new Error('Gemini phản hồi quá lâu. Bạn thử lại nhé.');
   if(!res.ok){
     const m=(data&&data.error&&data.error.message)||'', st=res.status;
     if(st===400&&/api[ _]?key/i.test(m)) throw new Error('API key không hợp lệ. Bấm biểu tượng bánh răng để nhập lại.');
