@@ -1333,11 +1333,11 @@ function handleAct(el){
 const GEMINI={
   key:'AQ.Ab8RN6IQXQQV_ND4eSwlSISM9K6diW6bO6hIY2d0DKFOcokCeg',   // key dùng chung cho mọi người truy cập (không cần nhập)
   keyAlts:['AQ.Ab8RN6K9I-Wvs4EYeCuuiX8mW9K6-m3UqR_Ze-urxGbZEyG61g','AQ.Ab8RN6K9l-Wvs4EYeCuuiX8mW9K6-m3UqR_Ze-urxGbZEyG61g'],   // key dự phòng (chép từ ảnh chụp nên thử cả I hoa / l thường)
-  model:'gemini-3.5-flash-lite',
-  models:['gemini-3.5-flash-lite','gemini-3.8-flash','gemini-3.6-flash','gemini-2.5-flash','gemini-2.0-flash'],   // chat: nếu model đầu 404 thì tự chuyển sang model kế tiếp (1.5 đã bị Google gỡ ở nhiều key → thêm 2.5-flash làm dự phòng cuối)
+  model:'gemini-2.5-flash',
+  models:['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-3.5-flash-lite','gemini-3.6-flash'],   // chat: nếu model đầu 404 thì tự chuyển sang model kế tiếp (1.5 đã bị Google gỡ ở nhiều key → thêm 2.5-flash làm dự phòng cuối)
   keyUrl:'https://aistudio.google.com/apikey'
 };
-const GS={open:false,settings:false,busy:false,key:load('gkey',''),model:load('gmodel5',GEMINI.model),msgs:[],hist:[],img:null};
+const GS={open:false,settings:false,busy:false,key:load('gkey',''),model:load('gmodel6',GEMINI.model),msgs:[],hist:[],img:null};
 const mdLite=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
 (function(){const kv=load('gkeyv','');if(kv&&(kv===GEMINI.key||(GEMINI.keyAlts||[]).includes(kv)))GEMINI.key=kv})();
 let KEYOVR='';
@@ -1501,7 +1501,7 @@ async function geminiCall(text,img){
       throw new Error('Không kết nối được tới Gemini (mất mạng hoặc trình duyệt chặn). Kiểm tra mạng rồi thử lại.');
     }
     tmo=false;
-    if(res.status!==404){ if(res.ok&&m!==GS.model){GS.model=m;save('gmodel5',m)} break }
+    if(res.status!==404){ if(res.ok&&m!==GS.model){GS.model=m;save('gmodel6',m)} break }
   }
   if(tmo||!res) throw new Error('Gemini phản hồi quá lâu. Bạn thử lại nhé.');
   if(!res.ok){
@@ -1582,7 +1582,7 @@ function gemSettings(){
 function gemSave(){
   const k=$('#gemKey').value.trim(), m=$('#gemModel').value.trim()||GEMINI.model;
   if(k){ GS.key=k; }
-  GS.model=m; save('gkey',GS.key); save('gmodel5',GS.model);
+  GS.model=m; save('gkey',GS.key); save('gmodel6',GS.model);
   GS.settings=false; $('#gemSet').hidden=true; if(k) toast('Đã lưu API key'); else toast('Đã lưu model'); renderGem();
 }
 function gemAttach(f){
