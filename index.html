@@ -1353,24 +1353,32 @@ async function gemPost(model,body,ms){
   KEYOVR='';return r;
 }
 async function gemPost1(model,body,ms){
-  const hdr={'Content-Type':'application/json'};
-  hdr['x-goog-api-key']=gemKey();
-  let hosts=/^AQ\./.test(gemKey())?['studio','vertex']:['studio'];
-  if(GHOST&&hosts.includes(GHOST)) hosts=[GHOST,...hosts.filter(h=>h!==GHOST)];
-  let out=null,netErr=null;
-  for(const h of hosts){
-    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),ms);
-    let res;
-    try{res=await fetch(GHOSTS[h]+encodeURIComponent(model)+':generateContent',{method:'POST',headers:hdr,body:JSON.stringify(body),signal:ctl.signal})}
-    catch(e){clearTimeout(to);if(e&&e.name==='AbortError')throw e;netErr=e;continue}
-    clearTimeout(to);
-    let data=null;try{data=await res.json()}catch(e){}
-    out={res,data,host:h};
-    if(res.ok){if(GHOST!==h){GHOST=h;save('ghost',h)}return out}
-    if(![401,403,404].includes(res.status)) return out;
-  }
-  if(out) return out;
-  throw netErr||new Error('network');
+  const k=gemKey(),hdr={'Content-Type':'application/json','x-goog-api-key':k};
+  const hosts=/^AQ\./.test(k)?['studio','vertex']:['studio'];
+  const one=async h=>{
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),ms),t0=performance.now();
+    try{
+      const res=await fetch(GHOSTS[h]+encodeURIComponent(model)+':generateContent',{method:'POST',headers:hdr,body:JSON.stringify(body),signal:ctl.signal});
+      let data=null;try{data=await res.json()}catch(e){}
+      try{console.log('[gemini]',h,model,res.status,Math.round(performance.now()-t0)+'ms')}catch(_){}
+      return {res,data,host:h};
+    }finally{clearTimeout(to)}
+  };
+  const pick=o=>{if(o.res.ok&&GHOST!==o.host){GHOST=o.host;save('ghost',o.host)}return o};
+  if(hosts.length===1) return pick(await one(hosts[0]));
+  // key AQ.: gọi đồng thời Google AI Studio và Vertex, lấy bên trả lời thành công đầu tiên (không chờ lần lượt)
+  return new Promise((resolve,reject)=>{
+    let pending=hosts.length,done=false;const fails=[],errs=[];
+    hosts.forEach(h=>one(h).then(o=>{
+      if(done)return;
+      if(o.res.ok){done=true;resolve(pick(o));return}
+      fails.push(o);
+      if(!--pending){done=true;resolve(fails.find(f=>f.res.status!==404)||fails[0])}
+    },e=>{
+      if(done)return;errs.push(e);
+      if(!--pending){done=true;fails.length?resolve(fails[0]):reject(errs.find(x=>x&&x.name==='AbortError')||errs[0])}
+    }));
+  });
 }
 const gemLive=()=>!!gemKey();
 const gemGreeting=()=>[{role:'bot',text:'Xin chào! Mình là **AI Stylist** của NextGen Rental ✨\nHỏi mình về trang phục theo dịp, ngân sách, phong cách — hoặc gửi ảnh để mình tư vấn. Mình cũng gợi ý cách tái chế đồ cũ nữa!',sugs:[],guides:[]}];
@@ -1529,12 +1537,12 @@ async function geminiAsk(raw){
   const img=GS.img; GS.img=null;
   GS.msgs.push({role:'me',text:text||'(gửi ảnh)',img:img?img.url:null});
   GS.busy=true; renderGem();
-  let bot;
+  let bot;const t0=performance.now();
   try{
     if(gemLive()) bot=await geminiCall(text,img);
     else { const r=stylistReply(text||'gợi ý outfit'); bot={role:'bot',text:r.text,sugs:r.sugs,guides:[],demo:true}; }
   }catch(err){ bot={role:'bot',text:err.message,sugs:[],guides:[],err:true}; }
-  GS.busy=false; GS.msgs.push(bot); renderGem();
+  GS.lastMs=Math.round((performance.now()-t0)/100)/10;GS.busy=false; GS.msgs.push(bot); renderGem();
 }
 function gemMsgHtml(m){
   if(m.role==='me') return `<div class="msg me">${m.img?`<img class="gimg" src="${m.img}" alt="Ảnh bạn gửi">`:''}${mdLite(m.text)}</div>`;
@@ -1547,7 +1555,7 @@ function renderGem(){
   const live=gemLive();
   box.innerHTML=GS.msgs.map(gemMsgHtml).join('')+(GS.busy?'<div class="msg bot gem-typing"><i></i><i></i><i></i></div>':'');
   box.scrollTop=box.scrollHeight;
-  $('#gemMode').textContent=live?('Gemini · '+GS.model):'Chế độ demo · chưa có API key';
+  $('#gemMode').textContent=live?('Gemini · '+GS.model+(GS.lastMs?' · '+GS.lastMs+'s':'')):'Chế độ demo · chưa có API key';
   const att=$('#gemAtt');
   if(GS.img){att.hidden=false;att.innerHTML=`<img src="${GS.img.url}" alt="Ảnh đính kèm"><span>${live?'Ảnh sẽ được gửi tới Google Gemini để phân tích khi bạn bấm Gửi.':'Chưa có API key: ảnh sẽ không được phân tích (chế độ demo).'}</span><button type="button" data-act="gem-rmimg" aria-label="Bỏ ảnh">×</button>`}
   else {att.hidden=true;att.innerHTML=''}
