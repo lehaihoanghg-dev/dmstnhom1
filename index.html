@@ -889,7 +889,7 @@ function stageAfter(){
   if(!S.photo) return 'Tải ảnh ở bên trái để bắt đầu.';
   if(FS.busy) return '<div class="fitload"><div class="sp"></div><div>AI đang phối đồ lên ảnh của bạn…<br><small style="color:var(--muted)">Thường mất 20–60 giây, vui lòng chờ</small></div></div>';
   if(!S.tried){FS.img=null;return 'Chọn “Thử toàn bộ outfit” để xem bản phối.'}
-  if(FS.img) return `<img class="base" src="${FS.img}" alt="Ảnh thử đồ do AI tạo"><span class="demo">Ảnh do AI Gemini tạo · chỉ mang tính tham khảo</span><a class="dl" href="${FS.img}" download="nextgen-thu-do.png">Tải ảnh</a>`;
+  if(FS.img) return `<img class="base" src="${FS.img}" alt="Ảnh thử đồ do AI tạo"><span class="demo">Ảnh do AI tạo · chỉ mang tính tham khảo</span><a class="dl" href="${FS.img}" download="nextgen-thu-do.png">Tải ảnh</a>`;
   const {items}=outfitTotals();
   const main=items.find(p=>['Áo dài','Váy','Lễ phục','Vest','Blazer'].includes(p.slot))||items.find(p=>p.kind!=='acc');
   const accs=items.filter(p=>p.kind==='acc'||p.slot==='Túi');
@@ -1287,7 +1287,7 @@ function handleAct(el){
     // AI Fit
     case 'rm-outfit':S.outfit=S.outfit.filter(x=>x!==id);S.tried=false;save('outfit',S.outfit);rerender();break;
     case 'del-photo':S.photo=null;S.tried=false;rerender();break;
-    case 'try-all':{if(!S.photo){toast('Hãy tải ảnh của bạn trước nhé');break}if(FS.busy){toast('AI đang xử lý, vui lòng chờ');break}S.tried=true;FS.err='';FS.img=null;if(!FIT.enabled){$('#after').innerHTML=stageAfter();toast('Đã phối đồ lên ảnh của bạn');break}if(!gemLive()){$('#after').innerHTML=stageAfter();toast('Chưa có API key Gemini — đang hiện bản phối tham khảo');break}fitRun();break}
+    case 'try-all':{if(!S.photo){toast('Hãy tải ảnh của bạn trước nhé');break}if(FS.busy){toast('AI đang xử lý, vui lòng chờ');break}S.tried=true;FS.err='';FS.img=null;if(!COLAB_API&&!FIT.enabled){$('#after').innerHTML=stageAfter();toast('Đã phối đồ lên ảnh của bạn');break}if(!COLAB_API&&!gemLive()){$('#after').innerHTML=stageAfter();toast('Chưa có API key Gemini — đang hiện bản phối tham khảo');break}fitRun();break}
     case 'save-outfit':S.saved.unshift({name:'Outfit '+(S.saved.length+1),items:[...S.outfit],date:nowStr()});save('saved',S.saved);toast('Đã lưu outfit'+(S.user?'':' (đăng nhập để quản lý trong Tài khoản)'));break;
     case 'rent-outfit':{let n=0;S.outfit.forEach(x=>{if(addCart(x)) n++});toast(`Đã thêm ${n} món vào giỏ thuê`);rerender();break}
     case 'ask':ask(val);break;
@@ -1494,12 +1494,39 @@ async function fitGenerate(){
   if(log.length){const e=new Error('Không model tạo ảnh nào dùng được. Chi tiết: '+log.join(' | '));try{console.warn(e.message)}catch(_){}throw e}
   throw last||new Error('Không tạo được ảnh.');
 }
+/* ---------- AI Fit qua server Google Colab (ngrok) ---------- */
+// 1. URL API Ngrok từ Google Colab của bạn (nhớ đổi lại mỗi khi chạy lại Colab nếu URL thay đổi)
+const API_URL = "https://dormitory-unpopular-swaddling.ngrok-free.dev/try-on";
+const COLAB_API = API_URL;   // đặt thành '' để quay về chế độ Gemini / bản phối tham khảo
+// 2. Gửi ảnh người dùng + ảnh áo (món chính trong outfit) sang Colab, nhận về ảnh ghép
+async function colabGenerate(){
+  const {items}=outfitTotals();
+  const main=items.find(p=>['Áo dài','Váy','Lễ phục','Vest','Blazer'].includes(p.slot))||items.find(p=>p.kind!=='acc')||items[0];
+  if(!main) throw new Error('Hãy chọn ít nhất một món trong outfit trước nhé.');
+  if(!S.photo) throw new Error('Vui lòng tải ảnh của bạn lên trước!');
+  const personBlob=await (await fetch(S.photo)).blob();
+  const garmentBlob=await (await fetch(src(main.img))).blob();
+  const formData=new FormData();
+  formData.append("person_img",personBlob,"person.jpg");
+  formData.append("garment_img",garmentBlob,"garment.jpg");
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),180000);
+  let response;
+  try{
+    response=await fetch(API_URL,{method:"POST",body:formData,headers:{"ngrok-skip-browser-warning":"true"},signal:ctl.signal});
+  }catch(e){
+    throw new Error(e&&e.name==='AbortError'?'AI phản hồi quá lâu. Bạn thử lại nhé.':'Không thể tạo bản phối. Bạn hãy kiểm tra xem Google Colab còn đang chạy không nhé!');
+  }finally{clearTimeout(to)}
+  if(!response.ok) throw new Error('Lỗi kết nối tới Server AI (mã '+response.status+')');
+  const imageBlob=await response.blob();
+  if(!/^image\//.test(imageBlob.type)) throw new Error('Server AI không trả về ảnh. Hãy kiểm tra lại Google Colab.');
+  return URL.createObjectURL(imageBlob);
+}
 async function fitRun(){
   const up=()=>{const a=$('#after');if(a)a.innerHTML=stageAfter()};
   const day=new Date().toISOString().slice(0,10);let cnt=load('fitcnt',null);if(!cnt||cnt.d!==day)cnt={d:day,n:0};
-  if(cnt.n>=FIT.limit){FS.err='Hôm nay bạn đã dùng hết '+FIT.limit+' lượt tạo ảnh AI. Mai quay lại nhé — ảnh phối tham khảo bên dưới vẫn xem được.';FS.img=null;toast(FS.err);up();return}
+  if(!COLAB_API&&cnt.n>=FIT.limit){FS.err='Hôm nay bạn đã dùng hết '+FIT.limit+' lượt tạo ảnh AI. Mai quay lại nhé — ảnh phối tham khảo bên dưới vẫn xem được.';FS.img=null;toast(FS.err);up();return}
   FS.busy=true;FS.err='';up();
-  try{FS.img=await fitGenerate();cnt.n++;save('fitcnt',cnt);toast('AI đã tạo ảnh thử đồ')}
+  try{FS.img=await (COLAB_API?colabGenerate():fitGenerate());if(!COLAB_API){cnt.n++;save('fitcnt',cnt)}toast('AI đã tạo ảnh thử đồ')}
   catch(e){FS.img=null;FS.err=e.message||'Lỗi';toast(FS.err)}
   finally{FS.busy=false;up()}
 }
