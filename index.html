@@ -1509,6 +1509,10 @@ async function colabGenerate(){
   const formData=new FormData();
   formData.append("person_img",personBlob,"person.jpg");
   formData.append("garment_img",garmentBlob,"garment.jpg");
+  // Loại trang phục để server chọn vùng thay: dresses = toàn thân (áo dài, váy liền, lễ phục), upper_body = áo, lower_body = quần/chân váy
+  const sl=(main.slot||'')+' '+(main.name||'');
+  const category=/áo dài|váy|đầm|lễ phục|jumpsuit/i.test(sl)&&!/chân váy/i.test(sl)?'dresses':/quần|chân váy/i.test(sl)?'lower_body':'upper_body';
+  formData.append("category",category);
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),180000);
   let response;
   try{
